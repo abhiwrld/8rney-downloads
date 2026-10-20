@@ -1,0 +1,50 @@
+name: Publish checksum-pinned Windows rc.13
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_url:
+        description: Short-lived URL for the accepted Windows installer artifact
+        type: string
+        required: true
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Verify the accepted artifact and upload the installer to its draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,subprocess,urllib.parse,urllib.request,zipfile
+          event=json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          url=event['inputs']['artifact_url']
+          print('::add-mask::'+url,flush=True)
+          parsed=urllib.parse.urlparse(url)
+          if parsed.scheme!='https' or not parsed.hostname.endswith('.blob.core.windows.net'):
+              raise SystemExit('Unexpected artifact storage host')
+          archive=pathlib.Path(os.environ['RUNNER_TEMP'])/'windows-installer.zip'
+          try:
+              with urllib.request.urlopen(url,timeout=120) as response,archive.open('wb') as output:
+                  while data:=response.read(1024*1024):output.write(data)
+          except Exception:
+              raise SystemExit('Artifact transfer failed; obtain a fresh download URL') from None
+          expected_archive='200588e3c0722d9266c34fa933c3b8bff89dd380dc300de2f6253d04fac2a211'
+          if archive.stat().st_size!=496690946 or hashlib.file_digest(archive.open('rb'),'sha256').hexdigest()!=expected_archive:
+              raise SystemExit('Artifact checksum mismatch')
+          filename='8rney-win-x64-0.1.0-rc.13.exe'
+          output=archive.parent/filename
+          with zipfile.ZipFile(archive) as bundle:
+              entry=bundle.getinfo(filename)
+              if entry.file_size!=496187014:raise SystemExit('Unexpected installer size')
+              with bundle.open(entry) as source,output.open('wb') as destination:
+                  while data:=source.read(1024*1024):destination.write(data)
+          digest=hashlib.file_digest(output.open('rb'),'sha256').hexdigest()
+          if digest!='a0fda7c6afb8a025cde9e43d3fc4e8b51afe42ef0c9746233e0107985fec914b':
+              raise SystemExit('Installer differs from installed Kimi acceptance receipt')
+          subprocess.run(['gh','release','upload','desk-windows-v0.1.0-rc.13',str(output),'--repo',os.environ['GITHUB_REPOSITORY']],check=True)
+          print(json.dumps({'installer':filename,'bytes':output.stat().st_size,'sha256':digest,'artifactDigestVerified':True,'draftUploadComplete':True}),flush=True)
+          PY
