@@ -44,7 +44,7 @@ jobs:
           command -v zstd >/dev/null || brew install zstd
           zstd -d --patch-from="$BASE" --long=30 "$PATCH" -o "$DMG"
           printf '%s  %s\n' "$DMG_SHA256" "$DMG" | shasum -a 256 -c -
-          codesign --verify --strict "$DMG"
-          xcrun stapler validate "$DMG"
-          spctl --assess --type open --context context:primary-signature "$DMG"
+          codesign --verify --strict "$PWD/$DMG"
+          xcrun stapler validate "$PWD/$DMG"
+          spctl --assess --type open --context context:primary-signature "$PWD/$DMG"
           gh release upload "desk-mac-v${VERSION}-signed" "$DMG" --repo "$GITHUB_REPOSITORY"
