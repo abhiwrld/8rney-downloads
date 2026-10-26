@@ -1,0 +1,52 @@
+name: Transfer exact signed Mac ZIP
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
+      zip_sha256:
+        required: true
+        type: string
+      patch_sha256:
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: mac-zip-transfer
+  cancel-in-progress: false
+jobs:
+  transfer:
+    runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+      ZIP_SHA256: ${{ inputs.zip_sha256 }}
+      PATCH_SHA256: ${{ inputs.patch_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate names and expected digests
+        run: |
+          node --input-type=module -e 'import {macReleaseNames} from "./scripts/promote-mac-update.mjs"; macReleaseNames(process.env.VERSION, `desk-mac-v${process.env.VERSION}-signed`); for (const key of ["ZIP_SHA256","PATCH_SHA256"]) if (!/^[a-f0-9]{64}$/.test(process.env[key])) throw Error("Invalid digest");'
+      - name: Reconstruct the exact signed and stapled app ZIP
+        run: |
+          mkdir -p "$RUNNER_TEMP/zip-transfer"
+          cd "$RUNNER_TEMP/zip-transfer"
+          BASE=8rney-mac-arm64-0.1.0-rc.15.zip
+          ZIP="8rney-mac-arm64-${VERSION}.zip"
+          PATCH="${ZIP}.zst"
+          gh release download desk-mac-v0.1.0-rc.15-signed --repo "$GITHUB_REPOSITORY" --pattern "$BASE"
+          printf '%s  %s\n' '829a3916d07dee87dcfec8993675dd391936a983903e735e692177a5eeb0647f' "$BASE" | shasum -a 256 -c -
+          gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --pattern "$PATCH"
+          printf '%s  %s\n' "$PATCH_SHA256" "$PATCH" | shasum -a 256 -c -
+          command -v zstd >/dev/null || brew install zstd
+          zstd -d -M2GB --patch-from="$BASE" "$PATCH" -o "$ZIP"
+          printf '%s  %s\n' "$ZIP_SHA256" "$ZIP" | shasum -a 256 -c -
+          mkdir app
+          ditto -x -k "$ZIP" app
+          codesign --verify --deep --strict app/8rney.app
+          xcrun stapler validate app/8rney.app
+          spctl --assess --type execute app/8rney.app
+          gh release upload "desk-mac-v${VERSION}-signed" "$ZIP" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
