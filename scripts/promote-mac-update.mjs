@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Promote an already signed candidate. Run explicitly on a Mac after upgrade testing.
 import { createHash } from "node:crypto";
-import { createReadStream, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream, copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -80,8 +80,10 @@ async function main() {
     const manifestPath = path.join(temporary, "latest-mac.yml"); writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
     if (!existing) gh(["release", "create", MAC_UPDATE_TAG, "--title", "8rney Mac updates", "--notes", "Signed and notarized Apple silicon Mac release feed. Versioned ZIPs are immutable candidate assets.", "--prerelease", "--latest=false"]);
     // Make the website installer available before committing the update pointer.
-    gh(["release", "upload", MAC_UPDATE_TAG, `${dmg}#8rney-mac-arm64-latest.dmg`, "--clobber"]);
-    gh(["release", "upload", MAC_UPDATE_TAG, `${manifestPath}#latest-mac.yml`, "--clobber"]);
+    const installerAlias = path.join(temporary, "8rney-mac-arm64-latest.dmg");
+    copyFileSync(dmg, installerAlias);
+    gh(["release", "upload", MAC_UPDATE_TAG, installerAlias, "--clobber"]);
+    gh(["release", "upload", MAC_UPDATE_TAG, manifestPath, "--clobber"]);
     writeFileSync(path.join(directory, "promotion-receipt.json"), JSON.stringify({ version, tag, feedTag: MAC_UPDATE_TAG, manifest, artifacts: metadata, signingTeam: team, trustChecksPassed: true }, null, 2) + "\n");
     console.log(`Promoted Mac ${version}; installer and update feed published.`);
   } finally { if (mounted) run("hdiutil", ["detach", mount]); rmSync(temporary, { recursive: true, force: true }); }
