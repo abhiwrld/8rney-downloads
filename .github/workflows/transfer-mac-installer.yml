@@ -1,0 +1,49 @@
+name: Transfer exact signed Mac installer
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
+      dmg_sha256:
+        required: true
+        type: string
+      patch_sha256:
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: mac-installer-transfer
+  cancel-in-progress: false
+jobs:
+  transfer:
+    runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+      DMG_SHA256: ${{ inputs.dmg_sha256 }}
+      PATCH_SHA256: ${{ inputs.patch_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate names and expected digests
+        run: |
+          node --input-type=module -e 'import {macReleaseNames} from "./scripts/promote-mac-update.mjs"; macReleaseNames(process.env.VERSION, `desk-mac-v${process.env.VERSION}-signed`); for (const key of ["DMG_SHA256","PATCH_SHA256"]) if (!/^[a-f0-9]{64}$/.test(process.env[key])) throw Error("Invalid digest");'
+      - name: Reconstruct the exact locally signed and stapled installer
+        run: |
+          mkdir -p "$RUNNER_TEMP/installer-transfer"
+          cd "$RUNNER_TEMP/installer-transfer"
+          BASE=8rney-mac-arm64-0.1.0-rc.15-signed.dmg
+          DMG="8rney-mac-arm64-${VERSION}-signed.dmg"
+          PATCH="${DMG}.zst"
+          gh release download desk-mac-v0.1.0-rc.15-signed --repo "$GITHUB_REPOSITORY" --pattern "$BASE"
+          printf '%s  %s\n' '8da19506906380aef175d3c4697f698c9aa4bc5145c5d772ca9bf23e0da4a772' "$BASE" | shasum -a 256 -c -
+          gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --pattern "$PATCH"
+          printf '%s  %s\n' "$PATCH_SHA256" "$PATCH" | shasum -a 256 -c -
+          command -v zstd >/dev/null || brew install zstd
+          zstd -d -M2GB --patch-from="$BASE" "$PATCH" -o "$DMG"
+          printf '%s  %s\n' "$DMG_SHA256" "$DMG" | shasum -a 256 -c -
+          codesign --verify --strict "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl --assess --type open --context context:primary-signature "$DMG"
+          gh release upload "desk-mac-v${VERSION}-signed" "$DMG" --repo "$GITHUB_REPOSITORY"
