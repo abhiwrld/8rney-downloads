@@ -38,7 +38,8 @@ jobs:
           PATCH="${ZIP}.zst"
           gh release download desk-mac-v0.1.0-rc.15-signed --repo "$GITHUB_REPOSITORY" --pattern "$BASE"
           printf '%s  %s\n' '829a3916d07dee87dcfec8993675dd391936a983903e735e692177a5eeb0647f' "$BASE" | shasum -a 256 -c -
-          gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --pattern "$PATCH"
+          gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --pattern "${PATCH}.part-*"
+          cat "${PATCH}".part-* > "$PATCH"
           printf '%s  %s\n' "$PATCH_SHA256" "$PATCH" | shasum -a 256 -c -
           command -v zstd >/dev/null || brew install zstd
           zstd -d --patch-from="$BASE" --long=30 "$PATCH" -o "$ZIP"
