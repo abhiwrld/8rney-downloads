@@ -35,7 +35,7 @@ const run = (command, args) => execFileSync(command, args, { encoding: "utf8", s
 const gh = args => run("gh", [...args, "--repo", MAC_RELEASE_REPOSITORY]);
 function verifyApp(app, version) {
   const config = readFileSync(path.join(app, "Contents/Resources/app-update.yml"), "utf8");
-  if (!/^updaterCacheDirName:\s*['"]?[A-Za-z0-9][A-Za-z0-9._-]*['"]?\s*$/m.test(config)) throw new Error("Missing updater download metadata in candidate app");
+  if (!/^updaterCacheDirName:\s*['"]?[A-Za-z0-9@][A-Za-z0-9@._-]*['"]?\s*$/m.test(config)) throw new Error("Missing updater download metadata in candidate app");
   run("codesign", ["--verify", "--deep", "--strict", app]);
   const identity = spawnSync("codesign", ["-dv", "--verbose=4", app], { encoding: "utf8" });
   if (identity.status !== 0 || !identity.stderr.split("\n").includes(`TeamIdentifier=${team}`)) throw new Error("Unexpected signing team");
