@@ -38,10 +38,11 @@ jobs:
           PATCH="${DMG}.zst"
           gh release download desk-mac-v0.1.0-rc.15-signed --repo "$GITHUB_REPOSITORY" --pattern "$BASE"
           printf '%s  %s\n' '8da19506906380aef175d3c4697f698c9aa4bc5145c5d772ca9bf23e0da4a772' "$BASE" | shasum -a 256 -c -
-          gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --pattern "$PATCH"
+          gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --pattern "${PATCH}.part-*"
+          cat "${PATCH}".part-* > "$PATCH"
           printf '%s  %s\n' "$PATCH_SHA256" "$PATCH" | shasum -a 256 -c -
           command -v zstd >/dev/null || brew install zstd
-          zstd -d -M2GB --patch-from="$BASE" "$PATCH" -o "$DMG"
+          zstd -d --patch-from="$BASE" --long=30 "$PATCH" -o "$DMG"
           printf '%s  %s\n' "$DMG_SHA256" "$DMG" | shasum -a 256 -c -
           codesign --verify --strict "$DMG"
           xcrun stapler validate "$DMG"

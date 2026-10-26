@@ -41,7 +41,7 @@ jobs:
           gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --pattern "$PATCH"
           printf '%s  %s\n' "$PATCH_SHA256" "$PATCH" | shasum -a 256 -c -
           command -v zstd >/dev/null || brew install zstd
-          zstd -d -M2GB --patch-from="$BASE" "$PATCH" -o "$ZIP"
+          zstd -d --patch-from="$BASE" --long=30 "$PATCH" -o "$ZIP"
           printf '%s  %s\n' "$ZIP_SHA256" "$ZIP" | shasum -a 256 -c -
           mkdir app
           ditto -x -k "$ZIP" app
