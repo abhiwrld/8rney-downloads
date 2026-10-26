@@ -1,0 +1,38 @@
+name: Promote signed Mac update
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Signed candidate version, for example 0.1.0-rc.16'
+        required: true
+        type: string
+      upgrade_tested:
+        description: 'A real upgrade from the current public version passed'
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: write
+concurrency:
+  group: mac-update-promotion
+  cancel-in-progress: false
+jobs:
+  promote:
+    runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+      UPGRADE_TESTED: ${{ inputs.upgrade_tested }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the requested candidate
+        run: |
+          test "$UPGRADE_TESTED" = true
+          node --input-type=module -e 'import {macReleaseNames} from "./scripts/promote-mac-update.mjs"; macReleaseNames(process.env.VERSION, `desk-mac-v${process.env.VERSION}-signed`);'
+          node --test scripts/promote-mac-update.test.mjs
+      - name: Download immutable candidate artifacts
+        run: |
+          mkdir -p "$RUNNER_TEMP/mac-candidate"
+          gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/mac-candidate" --pattern "8rney-mac-arm64-${VERSION}.zip" --pattern "8rney-mac-arm64-${VERSION}-signed.dmg"
+      - name: Verify Apple trust and promote installer then manifest
+        run: node scripts/promote-mac-update.mjs --version "$VERSION" --release-tag "desk-mac-v${VERSION}-signed" --assets-dir "$RUNNER_TEMP/mac-candidate"
