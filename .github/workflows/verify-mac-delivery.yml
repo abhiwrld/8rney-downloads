@@ -1,0 +1,30 @@
+name: Verify public Mac delivery
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
+      dmg_sha256:
+        required: true
+        type: string
+      zip_sha256:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      DMG_SHA256: ${{ inputs.dmg_sha256 }}
+      ZIP_SHA256: ${{ inputs.zip_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify anonymous installer, archive, feeds and sign-in boundary
+        run: python3 scripts/verify-mac-delivery.py --version "$VERSION" --dmg-sha256 "$DMG_SHA256" --zip-sha256 "$ZIP_SHA256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-public-delivery
+          path: public-delivery-receipt.json
