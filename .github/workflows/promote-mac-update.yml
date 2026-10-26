@@ -7,7 +7,7 @@ on:
         required: true
         type: string
       upgrade_tested:
-        description: 'A real upgrade from the current public version passed'
+        description: 'Native download, signature validation and restart passed for this candidate'
         required: true
         default: false
         type: boolean
