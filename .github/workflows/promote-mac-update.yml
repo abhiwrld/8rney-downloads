@@ -36,3 +36,18 @@ jobs:
           gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/mac-candidate" --pattern "8rney-mac-arm64-${VERSION}.zip" --pattern "8rney-mac-arm64-${VERSION}-signed.dmg"
       - name: Verify Apple trust and promote installer then manifest
         run: node scripts/promote-mac-update.mjs --version "$VERSION" --release-tag "desk-mac-v${VERSION}-signed" --assets-dir "$RUNNER_TEMP/mac-candidate"
+      - name: Verify public delivery against the promoted artifact hashes
+        run: |
+          python3 - <<'PYVERIFY'
+          import json, os, pathlib, subprocess
+          receipt = json.loads((pathlib.Path(os.environ['RUNNER_TEMP']) / 'mac-candidate/promotion-receipt.json').read_text())
+          zip_file = next(a for a in receipt['artifacts'] if a['name'].endswith('.zip'))
+          dmg = next(a for a in receipt['artifacts'] if a['name'].endswith('.dmg'))
+          subprocess.run(['python3', 'scripts/verify-mac-delivery.py', '--version', receipt['version'], '--dmg-sha256', dmg['sha256'], '--zip-sha256', zip_file['sha256']], check=True)
+          PYVERIFY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-promotion-receipts
+          path: |
+            ${{ runner.temp }}/mac-candidate/promotion-receipt.json
+            public-delivery-receipt.json
