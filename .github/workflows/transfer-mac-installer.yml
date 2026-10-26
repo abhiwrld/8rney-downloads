@@ -33,11 +33,11 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/installer-transfer"
           cd "$RUNNER_TEMP/installer-transfer"
-          BASE=8rney-mac-arm64-0.1.0-rc.15-signed.dmg
+          BASE=8rney-mac-arm64-0.1.0-rc.17-signed.dmg
           DMG="8rney-mac-arm64-${VERSION}-signed.dmg"
           PATCH="${DMG}.zst"
-          gh release download desk-mac-v0.1.0-rc.15-signed --repo "$GITHUB_REPOSITORY" --pattern "$BASE"
-          printf '%s  %s\n' '8da19506906380aef175d3c4697f698c9aa4bc5145c5d772ca9bf23e0da4a772' "$BASE" | shasum -a 256 -c -
+          gh release download desk-mac-v0.1.0-rc.17-signed --repo "$GITHUB_REPOSITORY" --pattern "$BASE"
+          printf '%s  %s\n' '182a6eece5dec86a3148f70eb03d642811efe45847a70a38743db02ee6ff0ff1' "$BASE" | shasum -a 256 -c -
           gh release download "desk-mac-v${VERSION}-signed" --repo "$GITHUB_REPOSITORY" --pattern "${PATCH}.part-*"
           cat "${PATCH}".part-* > "$PATCH"
           printf '%s  %s\n' "$PATCH_SHA256" "$PATCH" | shasum -a 256 -c -
