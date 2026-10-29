@@ -84,6 +84,10 @@ jobs:
             gh release upload "desk-windows-v$env:VERSION" $exe --repo $env:GITHUB_REPOSITORY
             if ($LASTEXITCODE -ne 0) { throw 'Immutable installer publication failed' }
           }
+      - name: Publish the verified immutable candidate release
+        run: |
+          gh release edit "desk-windows-v$env:VERSION" --repo $env:GITHUB_REPOSITORY --draft=false --latest=false
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate release publication failed' }
       - name: Promote installer before platform-specific update manifest
         run: node scripts/promote-windows-update.mjs
       - uses: actions/upload-artifact@v4
