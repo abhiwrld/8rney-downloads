@@ -52,6 +52,7 @@ jobs:
           $receipt = Get-Content $receiptPath -Raw | ConvertFrom-Json
           if ($receipt.installedVersion -ne $env:VERSION -or $receipt.installerSha256 -ne $env:INSTALLER_SHA256) { throw 'Acceptance artifact mismatch' }
           foreach ($key in @('nativeDownloadAndInstallerReplacement','embeddedAsarIntegrity','updaterMetadataPresent','syntheticSqlitePreserved','syntheticWorkspacePreserved','updatePreferencesPreserved','fullRendererServerEngineStartup','unsignedPreview')) { if ($receipt.$key -ne $true) { throw "Native acceptance not confirmed: $key" } }
+          if ([int]($env:VERSION.Split('.')[-1]) -ge 20 -and $receipt.automaticStartupReportAccepted -ne $true) { throw 'Automatic startup reporting acceptance is required' }
       - name: Reconstruct and publish byte-exact immutable installer
         run: |
           Set-Location $env:PROMOTION_ROOT
