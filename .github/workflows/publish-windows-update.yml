@@ -74,8 +74,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Reconstruction failed' }
           if ((Get-FileHash $exe -Algorithm SHA256).Hash.ToLower() -ne $env:INSTALLER_SHA256) { throw 'Installer digest mismatch' }
           if ((Get-AuthenticodeSignature $exe).Status -ne 'NotSigned') { throw 'Unexpected preview trust state' }
-          gh release upload "desk-windows-v$env:VERSION" $exe --repo $env:GITHUB_REPOSITORY --clobber
-          if ($LASTEXITCODE -ne 0) { throw 'Immutable installer publication failed' }
+          $release = gh release view "desk-windows-v$env:VERSION" --repo $env:GITHUB_REPOSITORY --json assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate release unavailable' }
+          if (@($release.assets | Where-Object { $_.name -eq $exe }).Count -gt 0) {
+            New-Item -ItemType Directory -Force existing | Out-Null
+            gh release download "desk-windows-v$env:VERSION" --repo $env:GITHUB_REPOSITORY --pattern $exe --dir existing
+            if ($LASTEXITCODE -ne 0 -or (Get-FileHash "existing/$exe" -Algorithm SHA256).Hash.ToLower() -ne $env:INSTALLER_SHA256) { throw 'Existing immutable installer differs; publication refused' }
+          } else {
+            gh release upload "desk-windows-v$env:VERSION" $exe --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw 'Immutable installer publication failed' }
+          }
       - name: Promote installer before platform-specific update manifest
         run: node scripts/promote-windows-update.mjs
       - uses: actions/upload-artifact@v4
