@@ -12,7 +12,7 @@ const prior=await fetch(`https://github.com/${repo}/releases/download/${alias}/l
 if(prior.ok){const old=await prior.json();assert.match(old.version,/^0\.1\.0-rc\.\d+$/);assert.ok(Number(version.split('.').at(-1))>=Number(old.version.split('.').at(-1)),'Refusing a downgrade');}
 else assert.equal(prior.status,404,'Previous Windows feed could not be checked');
 const immutable=`https://github.com/${repo}/releases/download/desk-windows-v${version}/${file}`;
-const manifest={version,files:[{url:immutable,sha512,size:data.length,isAdminRightsRequired:true}],path:immutable,sha512,releaseDate:new Date().toISOString()};
+const manifest={version,files:[{url:immutable,sha512,size:data.length}],path:immutable,sha512,releaseDate:new Date().toISOString()};
 const listing=JSON.parse(gh('release','list','--limit','100','--json','tagName'));if(!listing.some(r=>r.tagName===alias))gh('release','create',alias,'--title','8rney Windows x64 preview — latest','--notes','Unsigned Windows preview. Use Settings → Updates to check, download and restart.','--latest=false');
 const rolling=path.join(root,'8rney-win-x64-latest.exe');fs.copyFileSync(source,rolling);gh('release','upload',alias,rolling,'--clobber');
 const manifestFile=path.join(root,'latest.yml');fs.writeFileSync(manifestFile,JSON.stringify(manifest,null,2)+'\n');gh('release','upload',alias,manifestFile,'--clobber');
