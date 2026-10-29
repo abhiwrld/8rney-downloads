@@ -1,0 +1,84 @@
+name: Publish accepted Windows preview update
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
+      installer_sha256:
+        required: true
+        type: string
+      patch_sha256:
+        required: true
+        type: string
+      acceptance_sha256:
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: windows-update-promotion
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: windows-2022
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+      INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+      PATCH_SHA256: ${{ inputs.patch_sha256 }}
+      ACCEPTANCE_SHA256: ${{ inputs.acceptance_sha256 }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+      - name: Validate candidate and native acceptance receipt
+        run: |
+          if ($env:VERSION -notmatch '^0\.1\.0-rc\.[1-9][0-9]*$') { throw 'Invalid preview version' }
+          foreach ($digest in @($env:INSTALLER_SHA256,$env:PATCH_SHA256,$env:ACCEPTANCE_SHA256)) { if ($digest -notmatch '^[a-f0-9]{64}$') { throw 'Invalid digest' } }
+          $root = Join-Path $env:RUNNER_TEMP 'windows-promotion'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          "PROMOTION_ROOT=$root" >> $env:GITHUB_ENV
+          gh release download "desk-windows-v$env:VERSION" --repo $env:GITHUB_REPOSITORY --pattern windows-ota-acceptance.json --dir $root
+          if ($LASTEXITCODE -ne 0) { throw 'Acceptance receipt missing' }
+          $receiptPath = Join-Path $root 'windows-ota-acceptance.json'
+          if ((Get-FileHash $receiptPath -Algorithm SHA256).Hash.ToLower() -ne $env:ACCEPTANCE_SHA256) { throw 'Acceptance digest mismatch' }
+          $receipt = Get-Content $receiptPath -Raw | ConvertFrom-Json
+          if ($receipt.installedVersion -ne $env:VERSION -or $receipt.installerSha256 -ne $env:INSTALLER_SHA256) { throw 'Acceptance artifact mismatch' }
+          foreach ($key in @('nativeDownloadAndInstallerReplacement','embeddedAsarIntegrity','updaterMetadataPresent','syntheticSqlitePreserved','syntheticWorkspacePreserved','updatePreferencesPreserved','fullRendererServerEngineStartup','unsignedPreview')) { if ($receipt.$key -ne $true) { throw "Native acceptance not confirmed: $key" } }
+      - name: Reconstruct and publish byte-exact immutable installer
+        run: |
+          Set-Location $env:PROMOTION_ROOT
+          $base = '8rney-win-x64-0.1.0-rc.14.exe'
+          gh release download desk-windows-v0.1.0-rc.14 --repo $env:GITHUB_REPOSITORY --pattern $base
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline download failed' }
+          if ((Get-FileHash $base -Algorithm SHA256).Hash.ToLower() -ne '716f984aa1257b6666dd2f3049890bfe93a13ab99f9dc79933be44e98e9dd2d0') { throw 'Baseline mismatch' }
+          $exe = "8rney-win-x64-$env:VERSION.exe"
+          gh release download "desk-windows-v$env:VERSION" --repo $env:GITHUB_REPOSITORY --pattern "$exe.zst.part-*"
+          if ($LASTEXITCODE -ne 0) { throw 'Transfer parts missing' }
+          $stream = [System.IO.File]::Create("$PWD/$exe.zst")
+          try { Get-ChildItem "$exe.zst.part-*" | Sort-Object Name | ForEach-Object { $part = [System.IO.File]::OpenRead($_.FullName); try { $part.CopyTo($stream) } finally { $part.Dispose() } } } finally { $stream.Dispose() }
+          if ((Get-FileHash "$exe.zst" -Algorithm SHA256).Hash.ToLower() -ne $env:PATCH_SHA256) { throw 'Transfer digest mismatch' }
+          Invoke-WebRequest -Uri 'https://github.com/meta/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip' -OutFile zstd.zip
+          if ((Get-FileHash zstd.zip -Algorithm SHA256).Hash.ToLower() -ne 'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9') { throw 'Transfer tool mismatch' }
+          Expand-Archive zstd.zip -DestinationPath zstd
+          $zstd = @(Get-ChildItem zstd -Filter zstd.exe -Recurse)
+          if ($zstd.Count -ne 1) { throw 'Expected one transfer executable' }
+          & $zstd[0].FullName -d --long=30 "--patch-from=$base" "$exe.zst" -o $exe
+          if ($LASTEXITCODE -ne 0) { throw 'Reconstruction failed' }
+          if ((Get-FileHash $exe -Algorithm SHA256).Hash.ToLower() -ne $env:INSTALLER_SHA256) { throw 'Installer digest mismatch' }
+          if ((Get-AuthenticodeSignature $exe).Status -ne 'NotSigned') { throw 'Unexpected preview trust state' }
+          gh release upload "desk-windows-v$env:VERSION" $exe --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Immutable installer publication failed' }
+      - name: Promote installer before platform-specific update manifest
+        run: node scripts/promote-windows-update.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-promotion-receipt
+          path: ${{ env.PROMOTION_ROOT }}/promotion-receipt.json
